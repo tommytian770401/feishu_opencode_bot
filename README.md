@@ -120,12 +120,19 @@ OpenCode: ✅ 已创建新的会话
 
 ```
 opencode-feishu-bot/
-├── feishu_client.py     # 飞书 API 客户端 + OpenCode 集成
-├── feishu_bot.py        # 主程序（事件监听）
-├── requirements.txt     # 依赖列表
-├── .env.feishu.example  # 环境变量示例
-├── start_feishu.sh      # 启动脚本
-└── README_feishu.md     # 本文档
+├── feishu/              # 飞书框架模块
+│   ├── __init__.py
+│   ├── feishu_channel.py  # 飞书频道实现（WebSocket）
+│   ├── message_bus.py     # 消息总线
+│   ├── base_channel.py    # 基础通道抽象类
+│   └── config.py          # 配置类
+├── feishu_client.py        # 飞书底层 API 客户端
+├── opencode_agent.py       # OpenCode 业务逻辑处理器（新增）
+├── feishu_bot.py           # 主程序入口
+├── requirements.txt        # 依赖列表
+├── .env.feishu.example     # 环境变量示例
+├── start.sh                # 启动脚本
+└── README.md               # 本文档
 ```
 
 ## 技术实现
@@ -133,12 +140,36 @@ opencode-feishu-bot/
 ### 架构设计
 
 ```
-飞书事件 → FeishuClient → OpenCodeClient → OpenCode Server
-                                    ↓
-                             用户会话管理
-                                    ↓
-                              飞书消息回复
+飞书 WebSocket → FeishuChannel → MessageBus → OpenCodeAgent → OpenCode Server
+                                                               ↓
+                                                        用户会话管理
+                                                               ↓
+                                                    FeishuChannel ← MessageBus ← 响应
 ```
+
+### 模块职责
+
+- **feishu/**：可复用的飞书通道框架
+  - `FeishuChannel`：WebSocket 长连接接收/发送消息
+  - `MessageBus`：解耦 inbound/outbound 消息流
+  - `BaseChannel`：统一通道接口
+  
+- **feishu_client.py**：底层飞书 API 封装
+  - 租户 token 管理
+  - 消息发送/回复
+  - 用户和群组查询
+
+- **opencode_agent.py**：业务逻辑层（新增）
+  - 订阅 MessageBus 的 inbound 消息
+  - 会话生命周期管理
+  - 命令处理（/new /sessions /switch...）
+  - 调用 OpenCode Server 处理消息
+  - 发布响应到 outbound 队列
+
+- **feishu_bot.py**：应用入口
+  - 初始化配置
+  - 创建并启动各组件
+  - 优雅关闭
 
 ### 会话管理
 
@@ -213,12 +244,17 @@ opencode serve --port 4096
 
 ### 扩展功能
 
-可以在 `feishu_client.py` 中扩展 `FeishuOpenCodeBot` 类：
+- **新业务逻辑**：在 `opencode_agent.py` 中扩展 `OpenCodeAgent` 类
+- **新通道**：实现 `BaseChannel` 子类（如 TelegramChannel）
+- **持久化**：在 `OpenCodeAgent` 中添加数据库存储会话元数据
+- **卡片消息**：在 `FeishuChannel.send()` 中扩展卡片元素生成
 
-- 添加更多飞书 API 调用（如获取用户信息、创建卡片消息等）
-- 实现交互式卡片按钮处理
-- 添加数据库持久化存储
-- 扩展会话管理功能
+### 架构优势
+
+- ✅ **解耦清晰**：Channel ↔ Bus ↔ Agent 各司其职
+- ✅ **易于测试**：MessageBus 可 mock，Agent 可独立测试
+- ✅ **可扩展**：新增通道只需实现 BaseChannel
+- ✅ **可维护**：职责单一，代码简洁
 
 ### 调试技巧
 
